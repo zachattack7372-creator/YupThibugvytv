@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Temple of the Rat King</title>
+<style>
+body { margin:0; overflow:hidden; background:black; font-family:monospace; }
+#ui {
+ position:absolute;
+ top:10px;
+ left:10px;
+ color:white;
+ z-index:10;
+}
+#assistant {
+ position:absolute;
+ bottom:100px;
+ left:50%;
+ transform:translateX(-50%);
+ background:rgba(0,0,0,0.7);
+ padding:10px 20px;
+ border-radius:10px;
+ color:white;
+}
+#controls {
+ position:absolute;
+ bottom:20px;
+ width:100%;
+ text-align:center;
+}
+button {
+ padding:15px;
+ margin:5px;
+ font-size:18px;
+ border-radius:10px;
+ border:none;
+ background:#8b0000;
+ color:white;
+}
+</style>
+</head>
+<body>
+
+<div id="ui">
+Money: $<span id="money">0</span><br>
+Boss Phase: <span id="phase">1</span>
+</div>
+
+<div id="assistant">AI: Defend the temple.</div>
+
+<div id="controls">
+<button onclick="move('forward')">⬆</button><br>
+<button onclick="move('left')">⬅</button>
+<button onclick="attack()">⚔</button>
+<button onclick="move('right')">➡</button><br>
+<button onclick="move('back')">⬇</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+let scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+let light = new THREE.PointLight(0xffffff,1);
+light.position.set(10,20,10);
+scene.add(light);
+
+// Ground
+let ground = new THREE.Mesh(
+ new THREE.PlaneGeometry(100,100),
+ new THREE.MeshStandardMaterial({color:0x111111})
+);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
+
+// Temple building
+let temple = new THREE.Mesh(
+ new THREE.BoxGeometry(8,4,8),
+ new THREE.MeshStandardMaterial({color:0x550000})
+);
+temple.position.set(0,2,-15);
+scene.add(temple);
+
+// Player
+let player = new THREE.Mesh(
+ new THREE.CapsuleGeometry(0.5,1.2,4,8),
+ new THREE.MeshStandardMaterial({color:0x00ffcc})
+);
+player.position.y = 1;
+scene.add(player);
+
+// Monk allies
+let monks = [];
+for(let i=0;i<3;i++){
+ let monk = new THREE.Mesh(
+   new THREE.CylinderGeometry(0.5,0.5,2,12),
+   new THREE.MeshStandardMaterial({color:0xffaa00})
+ );
+ monk.position.set(i*3-3,1,-10);
+ scene.add(monk);
+ monks.push(monk);
+}
+
+// Enemy spawn
+let enemies = [];
+function spawnEnemy(type){
+ let color = type==="rat" ? 0x888888 :
+             type==="snake" ? 0x00ff00 :
+             0xffff00;
+ let mesh = new THREE.Mesh(
+   new THREE.BoxGeometry(1,1,1),
+   new THREE.MeshStandardMaterial({color})
+ );
+ mesh.position.set(
+   (Math.random()*20)-10,
+   0.5,
+   (Math.random()*20)-10
+ );
+ mesh.userData.type = type;
+ scene.add(mesh);
+ enemies.push(mesh);
+}
+
+for(let i=0;i<5;i++) spawnEnemy("rat");
+spawnEnemy("snake");
+
+// Boss
+let boss = new THREE.Mesh(
+ new THREE.SphereGeometry(2,32,32),
+ new THREE.MeshStandardMaterial({color:0xff0000})
+);
+boss.position.set(0,2,10);
+scene.add(boss);
+
+let bossPhase = 1;
+let money = 0;
+
+// Movement
+function move(dir){
+ if(dir==="forward") player.position.z -= 1;
+ if(dir==="back") player.position.z += 1;
+ if(dir==="left") player.position.x -= 1;
+ if(dir==="right") player.position.x += 1;
+}
+
+// Combat
+function attack(){
+ enemies.forEach((e,i)=>{
+  if(player.position.distanceTo(e.position)<2){
+    scene.remove(e);
+    enemies.splice(i,1);
+    money+=5;
+    document.getElementById("money").innerText=money;
+  }
+ });
+}
+
+// Adaptive Boss AI
+let playerBehavior = {attacks:0};
+
+function bossAI(){
+ let dist = player.position.distanceTo(boss.position);
+
+ if(dist < 10){
+   let combo = generateBossCombo();
+   executeCombo(combo);
+ }
+}
+
+function generateBossCombo(){
+ let attacks = ["dash","spin","summon","pulse"];
+ let comboLength = Math.floor(Math.random()*3)+2;
+ let combo=[];
+ for(let i=0;i<comboLength;i++){
+   combo.push(attacks[Math.floor(Math.random()*attacks.length)]);
+ }
+ return combo;
+}
+
+function executeCombo(combo){
+ combo.forEach(action=>{
+   if(action==="dash"){
+     boss.position.x += (player.position.x-boss.position.x)*0.1;
+     boss.position.z += (player.position.z-boss.position.z)*0.1;
+   }
+   if(action==="summon"){
+     spawnEnemy("rat");
+   }
+   if(action==="spin"){
+     boss.rotation.y += 1;
+   }
+   if(action==="pulse"){
+     document.getElementById("assistant").innerText="AI: Boss energy surge!";
+   }
+ });
+}
+
+// Monk helpers attack enemies
+function monkAI(){
+ monks.forEach(m=>{
+   enemies.forEach((e,i)=>{
+     if(m.position.distanceTo(e.position)<3){
+       scene.remove(e);
+       enemies.splice(i,1);
+     }
+   });
+ });
+}
+
+// Camera follow
+camera.position.set(0,6,10);
+
+function animate(){
+ requestAnimationFrame(animate);
+
+ bossAI();
+ monkAI();
+
+ camera.position.x = player.position.x;
+ camera.position.z = player.position.z + 10;
+ camera.lookAt(player.position);
+
+ renderer.render(scene,camera);
+}
+animate();
+
+window.addEventListener("resize",()=>{
+ camera.aspect=window.innerWidth/window.innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(window.innerWidth,window.innerHeight);
+});
+</script>
+
+</body>
+</html>
